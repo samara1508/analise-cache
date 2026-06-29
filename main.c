@@ -144,77 +144,97 @@ void gerar_resultados(Configuracao *cfg, Metricas *met) {
 
 int main() {
     Configuracao cfg;
-    Metricas met = {0};
+    int continuar = 1;
 
     srand(time(NULL));
-    ler_configuracoes(&cfg);
 
-    int qtd_conjuntos = cfg.total_blocos / cfg.vias_conjunto;
-    int bits_offset = calcular_bits(cfg.tam_bloco);
+    do {
+        Metricas met = {0};
 
-    BlocoCache *mem_cache = (BlocoCache *)calloc(cfg.total_blocos, sizeof(BlocoCache));
-    if (!mem_cache) return 1;
+        ler_configuracoes(&cfg);
 
-    FILE *arquivo = fopen(cfg.nome_arquivo, "r");
-    if (!arquivo) {
-        free(mem_cache);
-        return 1;
-    }
+        int qtd_conjuntos = cfg.total_blocos / cfg.vias_conjunto;
+        int bits_offset = calcular_bits(cfg.tam_bloco);
 
-    unsigned int endereco;
-    char op;
+        BlocoCache *mem_cache = (BlocoCache *)calloc(cfg.total_blocos, sizeof(BlocoCache));
+        if (!mem_cache) {
+            printf("Erro ao alocar memoria para a cache.\n");
+            return 1;
+        }
 
-    while (fscanf(arquivo, "%x %c", &endereco, &op) != EOF) {
-        unsigned int end_base = endereco >> bits_offset;
-        unsigned int id_conjunto = end_base % qtd_conjuntos;
-        unsigned int tag = end_base / qtd_conjuntos;
+        FILE *arquivo = fopen(cfg.nome_arquivo, "r");
+        if (!arquivo) {
+            printf("\n[ERRO]: Nao foi possivel abrir o arquivo '%s'. Verifique o caminho/nome.\n", cfg.nome_arquivo);
+            free(mem_cache);
 
-        int inicio_conj = id_conjunto * cfg.vias_conjunto;
-        int fim_conj = inicio_conj + cfg.vias_conjunto;
+            printf("\nDeseja realizar uma nova analise? (1 - Sim / 0 - Sair): ");
+            scanf("%d", &continuar);
+            printf("\n--------------------------------------------------\n");
+            continue;
+        }
 
-        if (op == 'R') met.leituras++; else met.escritas++;
+        unsigned int endereco;
+        char op;
 
-        int indice_alvo = buscar_bloco(mem_cache, inicio_conj, fim_conj, tag);
+        while (fscanf(arquivo, "%x %c", &endereco, &op) != EOF) {
+            unsigned int end_base = endereco >> bits_offset;
+            unsigned int id_conjunto = end_base % qtd_conjuntos;
+            unsigned int tag = end_base / qtd_conjuntos;
 
-        if (indice_alvo != -1) {
-            if (op == 'R') met.hit_leitura++;
-            else {
-                met.hit_escrita++;
-                if (cfg.pol_escrita == 0) met.acessos_mp_escrita++; // WT
-                else mem_cache[indice_alvo].dirty = 1;              // WB
-            }
+            int inicio_conj = id_conjunto * cfg.vias_conjunto;
+            int fim_conj = inicio_conj + cfg.vias_conjunto;
 
-            if (cfg.pol_subst == 0)
-                atualizar_lru_bloco(mem_cache, inicio_conj, fim_conj, indice_alvo, cfg.vias_conjunto, 1);
+            if (op == 'R') met.leituras++; else met.escritas++;
 
-        } else {
-            if (op == 'R') met.miss_leitura++; else met.miss_escrita++;
+            int indice_alvo = buscar_bloco(mem_cache, inicio_conj, fim_conj, tag);
 
-            if (op == 'W' && cfg.pol_escrita == 0) {
-                met.acessos_mp_escrita++;
-            } else {
-                indice_alvo = selecionar_bloco(mem_cache, inicio_conj, fim_conj, cfg.pol_subst, cfg.vias_conjunto);
-
-                if (cfg.pol_escrita == 1 && mem_cache[indice_alvo].valido && mem_cache[indice_alvo].dirty) {
-                    met.acessos_mp_escrita++;
+            if (indice_alvo != -1) {
+                if (op == 'R') met.hit_leitura++;
+                else {
+                    met.hit_escrita++;
+                    if (cfg.pol_escrita == 0) met.acessos_mp_escrita++; // WT
+                    else mem_cache[indice_alvo].dirty = 1;              // WB
                 }
 
-                met.acessos_mp_leitura++;
-                mem_cache[indice_alvo].valido = 1;
-                mem_cache[indice_alvo].rotulo = tag;
-                mem_cache[indice_alvo].dirty = (op == 'W') ? 1 : 0;
-
                 if (cfg.pol_subst == 0)
-                    atualizar_lru_bloco(mem_cache, inicio_conj, fim_conj, indice_alvo, cfg.vias_conjunto, 0);
+                    atualizar_lru_bloco(mem_cache, inicio_conj, fim_conj, indice_alvo, cfg.vias_conjunto, 1);
+
+            } else {
+                if (op == 'R') met.miss_leitura++; else met.miss_escrita++;
+
+                if (op == 'W' && cfg.pol_escrita == 0) {
+                    met.acessos_mp_escrita++;
+                } else {
+                    indice_alvo = selecionar_bloco(mem_cache, inicio_conj, fim_conj, cfg.pol_subst, cfg.vias_conjunto);
+
+                    if (cfg.pol_escrita == 1 && mem_cache[indice_alvo].valido && mem_cache[indice_alvo].dirty) {
+                        met.acessos_mp_escrita++;
+                    }
+
+                    met.acessos_mp_leitura++;
+                    mem_cache[indice_alvo].valido = 1;
+                    mem_cache[indice_alvo].rotulo = tag;
+                    mem_cache[indice_alvo].dirty = (op == 'W') ? 1 : 0;
+
+                    if (cfg.pol_subst == 0)
+                        atualizar_lru_bloco(mem_cache, inicio_conj, fim_conj, indice_alvo, cfg.vias_conjunto, 0);
+                }
             }
         }
-    }
 
-    limpar_cache_wb(mem_cache, &cfg, &met);
-    fclose(arquivo);
+        limpar_cache_wb(mem_cache, &cfg, &met);
+        fclose(arquivo);
 
-    gerar_resultados(&cfg, &met);
+        gerar_resultados(&cfg, &met);
 
-    free(mem_cache);
+        free(mem_cache);
+
+        printf("\n\n--------------------------------------------------\n");
+        printf("\nDeseja realizar uma nova analise? (1 - Sim / 0 - Sair): ");
+        scanf("%d", &continuar);
+        printf("--------------------------------------------------\n");
+    } while (continuar == 1);
+
+    printf("Simulacao encerrada.\n");
     return 0;
 }

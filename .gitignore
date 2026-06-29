@@ -3,14 +3,11 @@
 *.obj
 
 # Arquivos executaveis
-*.exe
 *.out
 *.app
 
 # Pastas de compilacao e debug
-bin/
 obj/
-Debug/
 Release/
 
 # Arquivos do Code::Blocks
