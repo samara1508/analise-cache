@@ -1,0 +1,23 @@
+# Arquivos objeto
+*.o
+*.obj
+
+# Arquivos executaveis
+*.exe
+*.out
+*.app
+
+# Pastas de compilacao e debug
+bin/
+obj/
+Debug/
+Release/
+
+# Arquivos do Code::Blocks
+*.depend
+*.layout
+*.cbp
+
+# Arquivos de log e crash do SO
+*.log
+.DS_Store
